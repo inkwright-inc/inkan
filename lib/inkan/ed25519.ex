@@ -21,6 +21,9 @@ defmodule Inkan.Ed25519 do
   @p (1 <<< 255) - 19
   @d 37_095_705_934_669_439_343_138_083_508_754_565_189_542_113_879_843_219_016_388_785_533_085_940_283_555
 
+  # The group order L: scalars in signatures live mod L.
+  @l (1 <<< 252) + 27_742_317_777_372_353_535_851_937_790_883_648_493
+
   # The standard base point B, in extended coordinates (x, y, 1, x*y).
   @bx 15_112_221_349_535_400_772_501_151_409_588_531_511_454_012_693_041_857_206_046_113_283_949_847_762_202
   @by 46_316_835_694_926_478_169_428_394_003_475_163_141_307_993_866_256_225_615_783_033_603_165_251_855_960
@@ -50,6 +53,38 @@ defmodule Inkan.Ed25519 do
   def clamp(<<first, middle::binary-size(30), last>>) do
     <<first &&& 248, middle::binary, (last &&& 127) ||| 64>>
   end
+
+  @doc """
+  Signs with a BIP32-Ed25519 *extended* key — the signing primitive Cardano
+  witnesses use.
+
+  Standard Ed25519 (RFC 8032) derives both its scalar and its nonce prefix
+  by hashing a seed; an extended key has no seed, so the derived scalar
+  `kL` signs directly and `kR` replaces the nonce prefix:
+
+      r = SHA-512(kR ‖ M)        R = r·B
+      k = SHA-512(R ‖ A ‖ M)     S = (r + k·kL) mod L
+
+  The output is an ordinary 64-byte Ed25519 signature — verifiable by any
+  RFC 8032 verifier (the test suite uses OTP's `:crypto.verify/5`) against
+  the public key `A = kL·B`.
+  """
+  def sign_extended(message, <<kl::little-unsigned-256>> = kl_bytes, kr)
+      when byte_size(kr) == 32 do
+    public = public_key_from_scalar(kl_bytes)
+
+    <<r::little-unsigned-512>> = :crypto.hash(:sha512, kr <> message)
+    r = rem(r, @l)
+    r_point = encode_scalar_mult_base(r)
+
+    <<k::little-unsigned-512>> = :crypto.hash(:sha512, r_point <> public <> message)
+    s = Integer.mod(r + k * kl, @l)
+
+    r_point <> <<s::little-unsigned-256>>
+  end
+
+  defp encode_scalar_mult_base(scalar),
+    do: public_key_from_scalar(<<scalar::little-unsigned-256>>)
 
   # ── Group operations (extended twisted Edwards coordinates) ──
 

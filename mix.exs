@@ -53,8 +53,13 @@ defmodule Inkan.MixProject do
   defp deps do
     [
       {:blake2, "~> 1.0"},
+      # Optional: only needed for Inkan.Provider.Blockfrost. Apps bringing
+      # their own HTTP stack can implement the Inkan.Provider behaviour.
+      {:req, "~> 0.5", optional: true},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:stream_data, "~> 1.0", only: [:dev, :test]}
+      {:stream_data, "~> 1.0", only: [:dev, :test]},
+      # Req.Test's plug-based request stubbing, used by the provider tests.
+      {:plug, "~> 1.15", only: [:dev, :test]}
     ]
   end
 end

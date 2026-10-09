@@ -26,4 +26,34 @@ defmodule Inkan.Ed25519Test do
     assert (last &&& 0b10000000) == 0
     assert (last &&& 0b01000000) == 0b01000000
   end
+
+  # Extended-key signatures are plain Ed25519 signatures; OTP's verifier is
+  # the oracle. Keys come from real CIP-1852 derivation so the scalars have
+  # the exact shape (clamped master, arithmetic-derived children) Cardano
+  # produces.
+  property "sign_extended produces signatures :crypto accepts" do
+    check all(
+            entropy <- StreamData.binary(length: 32),
+            message <- StreamData.binary(min_length: 1, max_length: 200),
+            max_runs: 50
+          ) do
+      {kl, kr, _cc} =
+        entropy
+        |> Inkan.KeyDerivation.master_from_entropy()
+        |> Inkan.KeyDerivation.derive_path([
+          Inkan.KeyDerivation.harden(1852),
+          Inkan.KeyDerivation.harden(1815),
+          Inkan.KeyDerivation.harden(0),
+          0,
+          0
+        ])
+
+      public = Ed25519.public_key_from_scalar(kl)
+      signature = Ed25519.sign_extended(message, kl, kr)
+
+      assert :crypto.verify(:eddsa, :none, message, signature, [public, :ed25519])
+
+      refute :crypto.verify(:eddsa, :none, message <> "x", signature, [public, :ed25519])
+    end
+  end
 end

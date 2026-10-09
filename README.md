@@ -37,9 +37,21 @@ ship with the library.
 
 ## Status
 
-Pre-release. The Phase 0 correctness spike (CBOR round-trips of real
-transactions, CIP-1852 derivation vectors) lives in the test suite; the
-public API is not yet stable.
+Pre-release; the full scope above is implemented and verified (see
+Correctness), through to the one-call flow:
+
+```elixir
+{:ok, wallet} = Inkan.Wallet.from_mnemonic(mnemonic, :mainnet)
+config = Inkan.Provider.Blockfrost.config(blockfrost_project_id, :mainnet)
+
+{:ok, tx_id} =
+  Inkan.anchor(Inkan.Provider.Blockfrost, config, wallet, 7368, %{
+    "doc_sha256" => sha256_hex
+  })
+```
+
+Remaining before 0.1.0 on hex: a live preprod rehearsal and API-stability
+review. The public API may still shift until then.
 
 ## Installation
 
