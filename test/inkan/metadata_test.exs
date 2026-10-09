@@ -46,4 +46,14 @@ defmodule Inkan.MetadataTest do
     decoded = metadata |> Metadata.serialize() |> CBOR.decode!()
     assert {:map, [{674, {:map, [{{:text, "msg"}, [{:text, "hello"}]}]}}]} = decoded
   end
+
+  test "errors inside nested structures propagate out" do
+    assert {:error, {:too_long, _}} = Metadata.build(1, [1, [2, String.duplicate("x", 65)]])
+    assert {:error, {:unsupported, _}} = Metadata.build(1, %{"k" => {:tuple, :nope}})
+  end
+
+  test "invalid UTF-8 binaries become byte strings without the :bytes wrapper" do
+    {:ok, {:map, [{1, value}]}} = Metadata.build(1, <<0xFF, 0xFE>>)
+    assert value == <<0xFF, 0xFE>>
+  end
 end

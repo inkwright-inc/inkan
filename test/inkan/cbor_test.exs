@@ -79,4 +79,71 @@ defmodule Inkan.CBORTest do
     assert CBOR.encode(-1) == <<0x20>>
     assert CBOR.encode(1_000_000) == <<0x1A, 0x00, 0x0F, 0x42, 0x40>>
   end
+
+  # RFC 8949 Appendix A examples: the decode-anything paths (indefinite
+  # lengths, half/single/double floats) that Cardano transactions never
+  # use but arbitrary chain data can. Each vector checks the decoded value
+  # AND byte-faithful re-encoding.
+  describe "RFC 8949 vectors" do
+    test "indefinite-length strings preserve chunking" do
+      bytes = Base.decode16!("5F42010243030405FF")
+      assert {:ok, {:indefinite_bytes, [<<1, 2>>, <<3, 4, 5>>]}, <<>>} = CBOR.decode(bytes)
+      assert bytes |> CBOR.decode!() |> CBOR.reencode() == bytes
+
+      text = Base.decode16!("7F657374726561646D696E67FF")
+      assert {:ok, {:indefinite_text, ["strea", "ming"]}, <<>>} = CBOR.decode(text)
+      assert text |> CBOR.decode!() |> CBOR.reencode() == text
+    end
+
+    test "indefinite-length arrays and maps round-trip" do
+      array = Base.decode16!("9F018202039F0405FFFF")
+      assert {:ok, {:indefinite, [1, [2, 3], {:indefinite, [4, 5]}]}, <<>>} = CBOR.decode(array)
+      assert array |> CBOR.decode!() |> CBOR.reencode() == array
+
+      map = Base.decode16!("BF61610161629F0203FFFF")
+
+      assert {:ok, {:indefinite_map, [{{:text, "a"}, 1}, {{:text, "b"}, {:indefinite, [2, 3]}}]},
+              <<>>} = CBOR.decode(map)
+
+      assert map |> CBOR.decode!() |> CBOR.reencode() == map
+    end
+
+    test "half-precision floats decode" do
+      assert CBOR.decode!(Base.decode16!("F90000")) == 0.0
+      assert CBOR.decode!(Base.decode16!("F93C00")) == 1.0
+      assert CBOR.decode!(Base.decode16!("F9C400")) == -4.0
+      assert CBOR.decode!(Base.decode16!("F97BFF")) == 65_504.0
+      assert CBOR.decode!(Base.decode16!("F90001")) == 5.960464477539063e-8
+      assert CBOR.decode!(Base.decode16!("F97C00")) == :infinity
+      assert CBOR.decode!(Base.decode16!("F97E00")) == :nan
+    end
+
+    test "single and double floats decode, doubles encode" do
+      assert CBOR.decode!(Base.decode16!("FA47C35000")) == 100_000.0
+      assert CBOR.decode!(Base.decode16!("FB3FF199999999999A")) == 1.1
+
+      # Our encoder always emits float-64 (canonical for our purposes).
+      assert CBOR.encode(1.1) == Base.decode16!("FB3FF199999999999A")
+      assert 1.1 |> CBOR.encode() |> CBOR.decode!() == 1.1
+    end
+  end
+
+  describe "error handling" do
+    test "truncated and garbage input return an error tuple" do
+      assert {:error, :invalid_cbor} = CBOR.decode(<<0x82, 0x01>>)
+      assert {:error, :invalid_cbor} = CBOR.decode(<<0x5F, 0x42>>)
+      assert {:error, :invalid_cbor} = CBOR.decode(<<>>)
+    end
+
+    test "decode! raises on trailing bytes and invalid input" do
+      assert_raise ArgumentError, ~r/trailing/, fn -> CBOR.decode!(<<0x01, 0x02>>) end
+      assert_raise ArgumentError, ~r/invalid/, fn -> CBOR.decode!(<<0xFF>>) end
+    end
+
+    test "plain Elixir maps are rejected by the encoder" do
+      # Pair order changes bytes and therefore hashes; {:map, pairs} makes
+      # order explicit, so a bare map must not silently encode.
+      assert_raise FunctionClauseError, fn -> CBOR.encode(%{1 => 2}) end
+    end
+  end
 end

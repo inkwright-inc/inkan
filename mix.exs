@@ -12,6 +12,8 @@ defmodule Inkan.MixProject do
       elixirc_options: [warnings_as_errors: true],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      # Enforced in CI; currently at ~98.7%. Raise it, never lower it.
+      test_coverage: [summary: [threshold: 95]],
       name: "Inkan",
       description: description(),
       package: package(),

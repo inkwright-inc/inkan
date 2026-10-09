@@ -101,4 +101,30 @@ defmodule Inkan.Provider.BlockfrostTest do
     assert {:confirmed, %{block_height: 3_200_000, block_time: %DateTime{}}} =
              Blockfrost.tx_status(config(), "confirmed_tx")
   end
+
+  test "transport errors surface as error tuples" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      Req.Test.transport_error(conn, :econnrefused)
+    end)
+
+    assert {:error, %Req.TransportError{reason: :econnrefused}} =
+             Blockfrost.protocol_params(config())
+
+    assert {:error, %Req.TransportError{}} = Blockfrost.submit(config(), <<0x84>>)
+    assert {:error, %Req.TransportError{}} = Blockfrost.tx_status(config(), "tx")
+  end
+
+  test "non-404 API errors from tx_status are surfaced, not treated as pending" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(429, ~s({"message": "rate limited"}))
+    end)
+
+    assert {:error, {:blockfrost, 429, _}} = Blockfrost.tx_status(config(), "tx")
+  end
+
+  test "config/3 rejects unknown networks at construction time" do
+    assert_raise FunctionClauseError, fn -> Blockfrost.config("key", :devnet) end
+  end
 end
