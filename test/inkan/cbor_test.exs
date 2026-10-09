@@ -142,8 +142,10 @@ defmodule Inkan.CBORTest do
 
     test "plain Elixir maps are rejected by the encoder" do
       # Pair order changes bytes and therefore hashes; {:map, pairs} makes
-      # order explicit, so a bare map must not silently encode.
-      assert_raise FunctionClauseError, fn -> CBOR.encode(%{1 => 2}) end
+      # order explicit, so a bare map must not silently encode. The apply/3
+      # keeps the deliberately ill-typed call opaque to the type checker,
+      # which would otherwise (correctly!) warn about it.
+      assert_raise FunctionClauseError, fn -> apply(CBOR, :encode, [%{1 => 2}]) end
     end
   end
 end
